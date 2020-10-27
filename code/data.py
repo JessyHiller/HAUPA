@@ -28,7 +28,14 @@ def load_word_embedding(path, corpus):
     return np.array(word_embeddings), word_dict
 
 
-def lookup(word_dict, reviews, max_sen_len, max_doc_len):
+def transform(word_dict, reviews, max_sen_len, max_doc_len):
+    """
+    :param word_dict: map word to index
+    :param reviews: list of string
+    :param max_sen_len:
+    :param max_doc_len:
+    :return: X(no_reviews, max_doc_len, max_sen_len)
+    """
     X = []
     for doc in reviews:
         i = 0
@@ -44,7 +51,7 @@ def lookup(word_dict, reviews, max_sen_len, max_doc_len):
                 j += 1
         i += 1
         X.append(x)
-    return X
+    return np.array(X)
 
 
 class DataSet(object):
@@ -76,3 +83,11 @@ class DataSet(object):
                 prd_dict[p] = i
                 i += 1
         return usr_dict, prd_dict
+
+    def usr_prd(self, u_dict, p_dict):
+        usr = []
+        prd = []
+        for i in range(self.data_size):
+            usr.append(u_dict[self.t_usr[i]])
+            prd.append(p_dict[self.t_prd[i]])
+        return usr, prd
