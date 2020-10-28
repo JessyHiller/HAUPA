@@ -39,7 +39,7 @@ def transform(word_dict, reviews, max_sen_len, max_doc_len):
     X = []
     for doc in reviews:
         i = 0
-        x = np.zeros((max_doc_len, max_sen_len), type=int)
+        x = np.zeros((max_doc_len, max_sen_len), dtype=int)
         for sen in doc.split('<sssss>'):
             if i == max_doc_len:
                 break
@@ -47,6 +47,8 @@ def transform(word_dict, reviews, max_sen_len, max_doc_len):
             for w in sen.strip().split(' '):
                 if j == max_sen_len:
                     break
+                if w not in word_dict:
+                    continue
                 x[i][j] = word_dict[w]
                 j += 1
         i += 1

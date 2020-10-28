@@ -2,17 +2,17 @@ import torch
 import numpy as np
 
 
-class HUAPA(object):
-    def __init__(self, embedding_file, hidden_size, max_doc_len, max_sen_len, lr, batch_size, u_num, p_num, num_class):
+class HUAPA(torch.nn.Module):
+    def __init__(self, embedding_file, hidden_size, max_doc_len, max_sen_len, batch_size, u_num, p_num, num_class):
+
+        super(HUAPA, self).__init__()
         self.embedding_file = embedding_file
         self.embedding_dim = embedding_file.shape[-1]
         self.hidden_size = hidden_size
         self.max_doc_len = max_doc_len
         self.max_sen_len = max_sen_len
-        self.lr = lr
         self.num_class = num_class
         self.no_review = batch_size
-        self.optimizer = torch.optim.Adam(self.parameter, lr=lr)
 
         self.embedding = torch.nn.Embedding.from_pretrained(torch.tensor(embedding_file))
         self.usr_embedding = torch.nn.Embedding(u_num, 2*self.hidden_size)
@@ -66,9 +66,9 @@ class HUAPA(object):
         :return (no_review, max_doc_len, max_sen_len, num_directions*hidden_size)
         """
         input_seq = X.view((self.no_review*self.max_doc_len, self.max_sen_len, self.embedding_dim))
-        input_seq.permute_(0, 1)
+        input_seq = input_seq.permute(0, 1)
         s_hidden_state, (_, _) = self.w2s_u_lstm(input_seq)
-        s_hidden_state.permute_(0, 1)
+        s_hidden_state = s_hidden_state.permute(0, 1)
         output_seq = s_hidden_state.view((self.no_review, self.max_doc_len, self.max_sen_len, 2*self.hidden_size))
         return output_seq
 
@@ -79,21 +79,19 @@ class HUAPA(object):
         :return:(batch_size, max_doc_len, 2*hidden_size)
         """
         d_hidden_state, (_, _) = self.s2d_u_lstm(X.permute(0, 1))
-        d_hidden_state.permute_(0, 1)
-        return d_hidden_state
+        return d_hidden_state.permute(0, 1)
 
     def w2s_p(self, X):
         input_seq = X.view((self.no_review * self.max_doc_len, self.max_sen_len, self.embedding_dim))
-        input_seq.permute_(0, 1)
+        input_seq = input_seq.permute(0, 1)
         s_hidden_state, (_, _) = self.w2s_p_lstm(input_seq)
-        s_hidden_state.permute_(0, 1)
+        s_hidden_state = s_hidden_state.permute(0, 1)
         output_seq = s_hidden_state.view((self.no_review, self.max_doc_len, self.max_sen_len, 2*self.hidden_size))
         return output_seq
 
     def s2d_p(self, X):
         d_hidden_state, (_, _) = self.s2d_p_lstm(X.permute(0, 1))
-        d_hidden_state.permute_(0, 1)
-        return d_hidden_state
+        return d_hidden_state.permute(0, 1)
 
     def ua_w(self, s_hidden_state, u):
         """
@@ -114,7 +112,7 @@ class HUAPA(object):
         alpha.unsqueeze_(-1)
         s_hidden_state.squeeze_()
         u.squeeze_()
-        s_hidden_state.permute_(-1, -2)
+        s_hidden_state = s_hidden_state.permute(-1, -2)
         s_u = torch.matmul(s_hidden_state, alpha)
         return s_u.squeeze()
 
@@ -137,7 +135,7 @@ class HUAPA(object):
         beta.unsqueeze_(-1)
         d_hidden_state.squeeze_()
         u.squeeze_()
-        d_hidden_state.permute_(1, 2)
+        d_hidden_state = d_hidden_state.permute(1, 2)
         d_u = torch.matmul(d_hidden_state, beta)
         return d_u.squeeze()
 
@@ -154,7 +152,7 @@ class HUAPA(object):
         alpha.unsqueeze_(-1)
         s_hidden_state.squeeze_()
         p.squeeze_()
-        s_hidden_state.permute_(1, 2)
+        s_hidden_state = s_hidden_state.permute(1, 2)
         s_p = torch.matmul(s_hidden_state, alpha)
         return s_p.squeeze()
 
@@ -171,7 +169,7 @@ class HUAPA(object):
         beta.unsqueeze_(-1)
         d_hidden_state.squeeze_()
         p.squeeze_()
-        d_hidden_state.permute_(1, 2)
+        d_hidden_state = d_hidden_state.permute(1, 2)
         d_p = torch.matmul(d_hidden_state, beta)
         return d_p.squeeze()
 
@@ -192,7 +190,7 @@ class HUAPA(object):
         y_ = self.predict_p(X)
         return torch.nn.functional.softmax(y_, -1)
 
-    def train(self, X, usr, prd, labels):
+    def forward(self, X):
         """
 
         :param X: (total_no_reviews, max_doc_len, max_sen_len) int
@@ -201,37 +199,22 @@ class HUAPA(object):
         :param labels: list of lable
         :return:
         """
-        assert len(usr) == len(prd) and len(usr) == len(prd) and len(usr) == np.shape(X)[0], "wrong data!"
-        data_size = len(usr)
-        epoch = data_size//self.no_review
+        # assert len(usr) == len(prd) and len(usr) == len(prd) and len(usr) == np.shape(X)[0], "wrong data!"
 
-        for i in range(epoch):
-            x = X[i*self.no_review:(i+1)*self.no_review]
-            u = usr[i*self.no_review:(i+1)*self.no_review]
-            p = prd[i*self.no_review:(i+1)*self.no_review]
-            label = labels[i*self.no_review:(i+1)*self.no_review]
+        x_train, u_train, p_train = self.look_up(X['doc'], X['usr'], X['prd'])
 
-            x_train, u_train, p_train = self.look_up(x, u, p)
+        sh_u = self.w2s_u(x_train)
+        sp_u = self.ua_w(sh_u, u_train)
+        dh_u = self.s2d_u(sp_u)
+        dp_u = self.ua_s(dh_u, u_train)
 
-            sh_u = self.w2s_u(x_train)
-            sp_u = self.ua_w(sh_u, u_train)
-            dh_u = self.s2d_u(sp_u)
-            dp_u = self.ua_s(dh_u, u_train)
+        sh_p = self.w2s_p(x_train)
+        sp_p = self.pa_w(sh_p, p_train)
+        dh_p = self.s2d_p(sp_p)
+        dp_p = self.pa_s(dh_p, p_train)
 
-            sh_p = self.w2s_p(x_train)
-            sp_p = self.pa_w(sh_p, p_train)
-            dh_p = self.s2d_p(sp_p)
-            dp_p = self.pa_s(dh_p, p_train)
+        predict_u = self.predict_u(dp_u)
+        predict_p = self.predict_p(dp_p)
+        predict = self.predict(torch.cat(dp_u, dp_p), -1)
 
-            l_train = np.eye(self.num_class)[label]
-            predict_u = self.predict_u(dp_u)
-            predict_p = self.predict_p(dp_p)
-            predict = self.predict(torch.cat(dp_u, dp_p), -1)
-            loss1 = torch.sum(torch.mul(predict, l_train), -1)
-            loss2 = torch.sum(torch.mul(predict_u, l_train), -1)
-            loss3 = torch.sum(torch.mul(predict_p, l_train), -1)
-            loss = 0.4*loss1+0.3*loss2+0.3*loss3
-            loss.backward()
-            self.optimizer.step()
-            print("here")
-            break
+        return predict_u, predict_p, predict
