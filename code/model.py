@@ -66,10 +66,10 @@ class HUAPA(torch.nn.Module):
         :return (no_review, max_doc_len, max_sen_len, num_directions*hidden_size)
         """
         input_seq = X.view((self.no_review*self.max_doc_len, self.max_sen_len, self.embedding_dim))
-        input_seq = input_seq.permute(0, 1)
-        s_hidden_state, (_, _) = self.w2s_u_lstm(input_seq)
-        s_hidden_state = s_hidden_state.permute(0, 1)
-        output_seq = s_hidden_state.view((self.no_review, self.max_doc_len, self.max_sen_len, 2*self.hidden_size))
+        inpt = input_seq.transpose(0, 1)
+        s_hidden_state, (_, _) = self.w2s_u_lstm(inpt)
+        s_h_state = s_hidden_state.transpose(0, 1)
+        output_seq = s_h_state.view((self.no_review, self.max_doc_len, self.max_sen_len, 2*self.hidden_size))
         return output_seq
 
     def s2d_u(self, X):
@@ -78,20 +78,22 @@ class HUAPA(torch.nn.Module):
         :param X: (batch_size=no_review, max_doc_len, 2*hidden_size)
         :return:(batch_size, max_doc_len, 2*hidden_size)
         """
-        d_hidden_state, (_, _) = self.s2d_u_lstm(X.permute(0, 1))
-        return d_hidden_state.permute(0, 1)
+        d_hidden_state, (_, _) = self.s2d_u_lstm(X.transpose(0, 1))
+        re = d_hidden_state.transpose(0, 1)
+        return re
 
     def w2s_p(self, X):
         input_seq = X.view((self.no_review * self.max_doc_len, self.max_sen_len, self.embedding_dim))
-        input_seq = input_seq.permute(0, 1)
-        s_hidden_state, (_, _) = self.w2s_p_lstm(input_seq)
-        s_hidden_state = s_hidden_state.permute(0, 1)
-        output_seq = s_hidden_state.view((self.no_review, self.max_doc_len, self.max_sen_len, 2*self.hidden_size))
+        inpt = input_seq.transpose(0, 1)
+        s_hidden_state, (_, _) = self.w2s_p_lstm(inpt)
+        s_h_state = s_hidden_state.transpose(0, 1)
+        output_seq = s_h_state.view((self.no_review, self.max_doc_len, self.max_sen_len, 2*self.hidden_size))
         return output_seq
 
     def s2d_p(self, X):
-        d_hidden_state, (_, _) = self.s2d_p_lstm(X.permute(0, 1))
-        return d_hidden_state.permute(0, 1)
+        d_hidden_state, (_, _) = self.s2d_p_lstm(X.transpose(0, 1))
+        re = d_hidden_state.transpose(0, 1)
+        return re
 
     def ua_w(self, s_hidden_state, u):
         """
@@ -100,21 +102,23 @@ class HUAPA(torch.nn.Module):
         :param u: (no_review, 2*hidden_size)
         :return: s_u: (no_review, max_doc_len, 2*hidden_size)
         """
-        s_hidden_state.unsqueeze_(-1)
-        linear = torch.matmul(self.W_wuh, s_hidden_state)
-        u.unsqueeze_(-1)
-        linear = torch.add(linear, torch.matmul(self.W_wuu, u))
-        linear = torch.add(linear, self.b_wu)
+        s_h_state0 = s_hidden_state.unsqueeze(-1)
+        h_projection = torch.matmul(self.W_wuh, s_h_state0)
+        u_ = u.unsqueeze(-1)
+        u_projection = torch.matmul(self.W_wuu, u_)
+        add_projection = torch.empty(h_projection.shape)
+        for i in range(self.no_review):
+            add_projection[i] = torch.add(h_projection[i], u_projection[i])
+        linear = torch.add(add_projection, self.b_wu)
         t = torch.tanh(linear)
         e = torch.matmul(self.v_wu.transpose(0, 1), t)
         e.squeeze_()
         alpha = torch.nn.functional.softmax(e, dim=-1)
         alpha.unsqueeze_(-1)
-        s_hidden_state.squeeze_()
-        u.squeeze_()
-        s_hidden_state = s_hidden_state.permute(-1, -2)
-        s_u = torch.matmul(s_hidden_state, alpha)
-        return s_u.squeeze()
+        s_h_state1 = s_hidden_state.transpose(-1, -2)
+        s_u = torch.matmul(s_h_state1, alpha)
+        re = s_u.squeeze()
+        return re
 
     def ua_s(self, d_hidden_state, u):
         """
@@ -123,72 +127,81 @@ class HUAPA(torch.nn.Module):
         :param u: (batch_size, max_doc_len, 2*hidden_size)
         :return: d_u: (batch_size, 2*hidden_size)
         """
-        d_hidden_state.unsqueeze_(-1)
-        linear = torch.matmul(self.W_suh, d_hidden_state)
-        u.unsqueeze_(-1)
-        linear += torch.matmul(self.W_suu, u)
-        linear = torch.add(linear, self.b_su)
+        d_h_state0 = d_hidden_state.unsqueeze(-1)
+        h_projection = torch.matmul(self.W_suh, d_h_state0)
+        u_ = u.unsqueeze(-1)
+        u_projection = torch.matmul(self.W_suu, u_)
+        add_projection = torch.empty(h_projection.shape)
+        for i in range(self.no_review):
+            add_projection[i] = torch.add(h_projection[i], u_projection[i])
+        linear = torch.add(add_projection, self.b_su)
         t = torch.tanh(linear)
         e = torch.matmul(self.v_wu.transpose(0, 1), t)
         e.squeeze_()
         beta = torch.nn.functional.softmax(e, dim=-1)
         beta.unsqueeze_(-1)
-        d_hidden_state.squeeze_()
-        u.squeeze_()
-        d_hidden_state = d_hidden_state.permute(1, 2)
-        d_u = torch.matmul(d_hidden_state, beta)
-        return d_u.squeeze()
+        d_h_state1 = d_hidden_state.transpose(1, 2)
+        d_u = torch.matmul(d_h_state1, beta)
+        re = d_u.squeeze()
+        return re
 
     def pa_w(self, s_hidden_state, p):
-        s_hidden_state.unsqueeze_(-1)
-        linear = torch.matmul(self.W_wph, s_hidden_state)
-        p.unsqueeze_(-1)
-        linear += torch.matmul(self.W_wpu, p)
-        linear = torch.add(linear, self.b_wp)
+        s_h_state0 = s_hidden_state.unsqueeze(-1)
+        h_projection = torch.matmul(self.W_wph, s_h_state0)
+        p_ = p.unsqueeze(-1)
+        p_projection = torch.matmul(self.W_wpu, p_)
+        add_projection = torch.empty(h_projection.shape)
+        for i in range(self.no_review):
+            add_projection[i] = torch.add(h_projection[i], p_projection[i])
+        linear = torch.add(add_projection, self.b_wp)
         t = torch.tanh(linear)
         e = torch.matmul(self.v_wp.transpose(0, 1), t)
         e.squeeze_()
         alpha = torch.nn.functional.softmax(e, dim=-1)
         alpha.unsqueeze_(-1)
-        s_hidden_state.squeeze_()
-        p.squeeze_()
-        s_hidden_state = s_hidden_state.permute(1, 2)
-        s_p = torch.matmul(s_hidden_state, alpha)
-        return s_p.squeeze()
+        s_h_state1 = s_hidden_state.transpose(-1, -2)
+        s_p = torch.matmul(s_h_state1, alpha)
+        re = s_p.squeeze()
+        return re
 
     def pa_s(self, d_hidden_state, p):
-        d_hidden_state.unsqueeze_(-1)
-        linear = torch.matmul(self.W_sph, d_hidden_state)
-        p.unsqueeze_(-1)
-        linear += torch.matmul(self.W_spu, p)
-        linear = torch.add(linear, self.b_sp)
+        d_h_state0 = d_hidden_state.unsqueeze(-1)
+        h_projection = torch.matmul(self.W_sph, d_h_state0)
+        p_ = p.unsqueeze_(-1)
+        p_projection = torch.matmul(self.W_spu, p_)
+        add_projection = torch.empty(h_projection.shape)
+        for i in range(self.no_review):
+            add_projection[i] = torch.add(h_projection[i], p_projection[i])
+        linear = torch.add(add_projection, self.b_sp)
         t = torch.tanh(linear)
         e = torch.matmul(self.v_wp.transpose(0, 1), t)
         e.squeeze_()
         beta = torch.nn.functional.softmax(e, dim=-1)
         beta.unsqueeze_(-1)
-        d_hidden_state.squeeze_()
-        p.squeeze_()
-        d_hidden_state = d_hidden_state.permute(1, 2)
-        d_p = torch.matmul(d_hidden_state, beta)
-        return d_p.squeeze()
+        d_h_state1 = d_hidden_state.transpose(1, 2)
+        d_p = torch.matmul(d_h_state1, beta)
+        re = d_p.squeeze()
+        return re
 
-    def predict(self, X):
+    def pre(self, X):
         """
 
         :param X: (batch_size=no_review, 4*self.hidden_size)
         :return: y_: (batch_size, )
         """
         y_ = self.predict(X)
-        return torch.nn.functional.softmax(y_, -1)
+        re = torch.nn.functional.softmax(y_, -1)
+        return re
 
-    def predict_u(self, X):
+    def pre_u(self, X):
         y_ = self.predict_u(X)
-        return torch.nn.functional.softmax(y_, -1)
+        re = torch.nn.functional.softmax(y_, -1)
+        return re
 
-    def predict_p(self, X):
+    def pre_p(self, X):
         y_ = self.predict_p(X)
-        return torch.nn.functional.softmax(y_, -1)
+        re = torch.nn.functional.softmax(y_, -1)
+        return re
 
     def forward(self, X):
         """
@@ -203,6 +216,8 @@ class HUAPA(torch.nn.Module):
 
         x_train, u_train, p_train = self.look_up(X['doc'], X['usr'], X['prd'])
 
+        x_train = x_train.float()
+
         sh_u = self.w2s_u(x_train)
         sp_u = self.ua_w(sh_u, u_train)
         dh_u = self.s2d_u(sp_u)
@@ -213,8 +228,8 @@ class HUAPA(torch.nn.Module):
         dh_p = self.s2d_p(sp_p)
         dp_p = self.pa_s(dh_p, p_train)
 
-        predict_u = self.predict_u(dp_u)
-        predict_p = self.predict_p(dp_p)
-        predict = self.predict(torch.cat(dp_u, dp_p), -1)
+        predict_u = self.pre_u(dp_u)
+        predict_p = self.pre_p(dp_p)
+        predict = self.pre(torch.cat((dp_u, dp_p), -1))
 
         return predict_u, predict_p, predict
