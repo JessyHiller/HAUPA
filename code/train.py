@@ -4,7 +4,7 @@ import torch
 
 from code.data import load_word_embedding
 from code.data import transform
-from code.data import DataSet
+from code.data import Data
 from code.model import HUAPA
 
 
@@ -27,9 +27,9 @@ learning_rate = 0.005
 hidden_size = 100
 batch_size = 10
 
-train_data = DataSet(path['yelp13-train'])
-test_data = DataSet(path['yelp13-test'])
-dev_data = DataSet(path['yelp13-dev'])
+train_data = Data(path['yelp13-train'])
+test_data = Data(path['yelp13-test'])
+dev_data = Data(path['yelp13-dev'])
 
 all_doc = np.concatenate([train_data.t_docs, test_data.t_docs, dev_data.t_docs])
 embedding_file, words_dict = load_word_embedding(path['yelp13-w2vec'], all_doc)
@@ -43,23 +43,26 @@ optimizer = opt.Adam(huapa.parameters(), lr=learning_rate)
 data_size = train_X.shape[0]
 iters = data_size//batch_size
 
-for i in range(iters):
-    X = dict()
-    X['doc'] = torch.LongTensor(train_X[i*batch_size:(i+1)*batch_size])
-    X['usr'] = torch.LongTensor(u[i*batch_size:(i+1)*batch_size])
-    X['prd'] = torch.LongTensor(p[i*batch_size:(i+1)*batch_size])
-    predict_u, predict_p, predict = huapa.forward(X)
+for epoch in range(100):
+    for i in range(iters):
+        X = dict()
+        X['doc'] = torch.LongTensor(train_X[i*batch_size:(i+1)*batch_size])
+        X['usr'] = torch.LongTensor(u[i*batch_size:(i+1)*batch_size])
+        X['prd'] = torch.LongTensor(p[i*batch_size:(i+1)*batch_size])
+        predict_u, predict_p, predict = huapa.forward(X)
 
-    l = train_data.t_label[i*batch_size:(i+1)*batch_size]
-    l_train = torch.tensor(np.eye(5)[l])
+        l = train_data.t_label[i*batch_size:(i+1)*batch_size]
+        l_train = torch.tensor(np.eye(5)[l])
 
-    loss1 = torch.sum(torch.mul(predict, l_train))
-    loss2 = torch.sum(torch.mul(predict_u, l_train))
-    loss3 = torch.sum(torch.mul(predict_p, l_train))
-    loss = 0.4*loss1+0.3*loss2+0.3*loss3
+        loss1 = torch.sum(torch.mul(predict, l_train))
+        loss2 = torch.sum(torch.mul(predict_u, l_train))
+        loss3 = torch.sum(torch.mul(predict_p, l_train))
+        loss = 0.4*loss1+0.3*loss2+0.3*loss3
 
-    torch.autograd.set_detect_anomaly(True)
-    loss.backward()
-    optimizer.step()
-    print('first iter')
-    break
+        torch.autograd.set_detect_anomaly(True)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        print('first iter')
+        break

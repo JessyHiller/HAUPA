@@ -56,7 +56,7 @@ def transform(word_dict, reviews, max_sen_len, max_doc_len):
     return np.array(X)
 
 
-class DataSet(object):
+class Data(object):
     def __init__(self, data_path):
         self.t_usr = []
         self.t_prd = []
