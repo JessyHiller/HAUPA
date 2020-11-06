@@ -27,22 +27,22 @@ class HUAPA(torch.nn.Module):
         self.v_wu = torch.empty((2*self.hidden_size, 1)).uniform_(-0.01, 0.01)
         self.W_wuh = torch.empty((2*self.hidden_size, 2*self.hidden_size)).uniform_(-0.01, 0.01)
         self.W_wuu = torch.empty((2*self.hidden_size, 2*self.hidden_size)).uniform_(-0.01, 0.01)
-        self.b_wu = torch.empty((2*self.hidden_size, 1)).uniform_(-0.01, 0.01)
+        self.b_wu = torch.empty((2*self.hidden_size)).uniform_(-0.01, 0.01)
 
         self.v_su = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
         self.W_suh = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
         self.W_suu = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
-        self.b_su = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
+        self.b_su = torch.empty((2 * self.hidden_size)).uniform_(-0.01, 0.01)
 
         self.v_wp = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
         self.W_wph = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
         self.W_wpu = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
-        self.b_wp = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
+        self.b_wp = torch.empty((2 * self.hidden_size)).uniform_(-0.01, 0.01)
 
         self.v_sp = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
         self.W_sph = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
         self.W_spu = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
-        self.b_sp = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
+        self.b_sp = torch.empty((2 * self.hidden_size)).uniform_(-0.01, 0.01)
 
         self.predict = torch.nn.Linear(4*self.hidden_size, self.num_class)
         self.predict_u = torch.nn.Linear(2*self.hidden_size, self.num_class)
@@ -134,24 +134,15 @@ class HUAPA(torch.nn.Module):
         :param u: (no_review, 2*hidden_size)
         :return: s_u: (no_review, max_doc_len, 2*hidden_size)
         """
-        s_h_state0 = s_hidden_state.unsqueeze(-1)
-        h_projection = torch.matmul(self.W_wuh, s_h_state0)
-        u_ = u.unsqueeze(-1)
-        u_projection = torch.matmul(self.W_wuu, u_).reshape((10, 1, 1, 200, 1))
-        # add_projection = torch.empty(h_projection.shape)
-        # for i in range(self.no_review):
-        #     add_projection[i] = torch.add(h_projection[i], u_projection[i])
-        add_projection = torch.add(h_projection, u_projection)
+        h_projection = torch.matmul(s_hidden_state, self.W_wuh)
+        u_projection = torch.matmul(u, self.W_wuh)
+        add_projection = h_projection + u_projection[:, None, None, :]
         linear = torch.add(add_projection, self.b_wu)
         t = torch.tanh(linear)
-        e = torch.matmul(self.v_wu.transpose(0, 1), t)
-        e_ = e.squeeze()
-        alpha = torch.nn.functional.softmax(e_, dim=-1)
-        a_ = alpha.unsqueeze(-1)
-        s_h_state1 = s_hidden_state.transpose(-1, -2)
-        s_u = torch.matmul(s_h_state1, a_)
-        re = s_u.squeeze()
-        return re
+        e = torch.matmul(t, self.v_wu)
+        alpha = torch.nn.functional.softmax(e, dim=-2)
+        s_u = torch.matmul(s_hidden_state.transpose(-1, -2), alpha).squeeze()
+        return s_u
 
     def ua_s(self, d_hidden_state, u):
         """
@@ -160,61 +151,34 @@ class HUAPA(torch.nn.Module):
         :param u: (batch_size, 2*hidden_size)
         :return: d_u: (batch_size, 2*hidden_size)
         """
-        d_h_state0 = d_hidden_state.unsqueeze(-1)
-        h_projection = torch.matmul(self.W_suh, d_h_state0)
-        u_ = u.unsqueeze(-1)
-        u_projection = torch.matmul(self.W_suu, u_).reshape((10, 1, 200, 1))
-        # add_projection = torch.empty(h_projection.shape)
-        # for i in range(self.no_review):
-        #     add_projection[i] = torch.add(h_projection[i], u_projection[i])
-        add_projection = torch.add(h_projection, u_projection)
+        h_projection = torch.matmul(d_hidden_state, self.W_suh)
+        u_projection = torch.matmul(u, self.W_suh)
+        add_projection = h_projection + u_projection[:, None, :]
         linear = torch.add(add_projection, self.b_su)
         t = torch.tanh(linear)
-        e = torch.matmul(self.v_wu.transpose(0, 1), t)
-        e_ = e.squeeze()
-        beta = torch.nn.functional.softmax(e_, dim=-1)
-        b_ = beta.unsqueeze(-1)
-        d_h_state1 = d_hidden_state.transpose(1, 2)
-        d_u = torch.matmul(d_h_state1, b_)
-        re = d_u.squeeze()
-        return re
+        e = torch.matmul(t, self.v_wu)
+        beta = torch.nn.functional.softmax(e, dim=-2)
+        d_u = torch.matmul(d_hidden_state.transpose(-1, -2), beta).squeeze()
+        return d_u
 
     def pa_w(self, s_hidden_state, p):
-        s_h_state0 = s_hidden_state.unsqueeze(-1)
-        h_projection = torch.matmul(self.W_wph, s_h_state0)
-        p_ = p.unsqueeze(-1)
-        p_projection = torch.matmul(self.W_wpu, p_).reshape((10, 1, 1, 200, 1))
-        # add_projection = torch.empty(h_projection.shape)
-        # for i in range(self.no_review):
-        #     add_projection[i] = torch.add(h_projection[i], p_projection[i])
-        add_projection = torch.add(h_projection, p_projection)
+        h_projection = torch.matmul(s_hidden_state, self.W_wph)
+        p_projection = torch.matmul(p, self.W_wpu)
+        add_projection = h_projection + p_projection[:, None, None, :]
         linear = torch.add(add_projection, self.b_wp)
         t = torch.tanh(linear)
-        e = torch.matmul(self.v_wp.transpose(0, 1), t)
-        e_ = e.squeeze()
-        alpha = torch.nn.functional.softmax(e_, dim=-1)
-        a_ = alpha.unsqueeze(-1)
-        s_h_state1 = s_hidden_state.transpose(-1, -2)
-        s_p = torch.matmul(s_h_state1, a_)
-        re = s_p.squeeze()
-        return re
+        e = torch.matmul(t, self.v_wp)
+        alpha = torch.nn.functional.softmax(e, dim=-2)
+        s_p = torch.matmul(s_hidden_state.transpose(-1, -2), alpha).squeeze()
+        return s_p
 
     def pa_s(self, d_hidden_state, p):
-        d_h_state0 = d_hidden_state.unsqueeze(-1)
-        h_projection = torch.matmul(self.W_sph, d_h_state0)
-        p_ = p.unsqueeze_(-1)
-        p_projection = torch.matmul(self.W_spu, p_).reshape((10, 1, 200, 1))
-        # add_projection = torch.empty(h_projection.shape)
-        # for i in range(self.no_review):
-        #     add_projection[i] = torch.add(h_projection[i], p_projection[i])
-        add_projection = torch.add(h_projection, p_projection)
+        h_projection = torch.matmul(d_hidden_state, self.W_sph)
+        p_projection = torch.matmul(p, self.W_spu)
+        add_projection = h_projection + p_projection[:, None, :]
         linear = torch.add(add_projection, self.b_sp)
         t = torch.tanh(linear)
-        e = torch.matmul(self.v_wp.transpose(0, 1), t)
-        e_ = e.squeeze()
-        beta = torch.nn.functional.softmax(e_, dim=-1)
-        b_ = beta.unsqueeze(-1)
-        d_h_state1 = d_hidden_state.transpose(1, 2)
-        d_p = torch.matmul(d_h_state1, b_)
-        re = d_p.squeeze()
-        return re
+        e = torch.matmul(t, self.v_wp)
+        beta = torch.nn.functional.softmax(e, dim=-2)
+        d_p = torch.matmul(d_hidden_state.transpose(-1, -2), beta).squeeze()
+        return d_p

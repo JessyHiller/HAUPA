@@ -25,7 +25,7 @@ max_doc_len = 50
 max_sen_len = 40
 learning_rate = 0.005
 hidden_size = 100
-batch_size = 10
+batch_size = 100
 
 train_data = Data(path['yelp13-train'])
 test_data = Data(path['yelp13-test'])
@@ -39,9 +39,14 @@ huapa = HUAPA(embedding_file, hidden_size, max_doc_len, max_sen_len, batch_size,
 train_X = transform(words_dict, train_data.t_docs, max_doc_len, max_sen_len)
 u, p = train_data.usr_prd(u_dict, p_dict)
 
+dev_X = transform(words_dict, dev_data.t_docs, max_doc_len, max_sen_len)
+dev_Y = dev_data.t_label
+N = len(dev_X)
+
 optimizer = opt.Adam(huapa.parameters(), lr=learning_rate)
 data_size = train_X.shape[0]
 iters = data_size//batch_size
+
 
 for epoch in range(100):
     for i in range(iters):
@@ -64,5 +69,17 @@ for epoch in range(100):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        print('first iter')
-        break
+
+    if epoch % 10 == 0:
+        predict = huapa.forward(dev_X)
+        y = [x.index(max(x)) for x in predict]
+        c = 0
+        s = 0
+        for i in range(N):
+            if dev_Y[i] == y[i]:
+                c += 1
+            s += (dev_Y[i] - y[i])**2
+        acc = c/N
+        RMSE = np.sqrt(s/N)
+        torch.save(huapa.state_dict(), '../checkpoint/yelp-2013-'+str(epoch)+'-parameter.pkl')
+        print('epoch ', epoch, '--------- acc =', acc, '   RMSE =', RMSE)
