@@ -35,18 +35,19 @@ all_doc = np.concatenate([train_data.t_docs, test_data.t_docs, dev_data.t_docs])
 embedding_file, words_dict = load_word_embedding(path['yelp13-w2vec'], all_doc)
 
 u_dict, p_dict = train_data.usr_prd_dict()
+
+print(u_dict)
+print(p_dict)
+
 huapa = HUAPA(embedding_file, hidden_size, max_doc_len, max_sen_len, batch_size, len(u_dict), len(p_dict), 5)
 train_X = transform(words_dict, train_data.t_docs, max_doc_len, max_sen_len)
 u, p = train_data.usr_prd(u_dict, p_dict)
-
-dev_X = transform(words_dict, dev_data.t_docs, max_doc_len, max_sen_len)
-dev_Y = dev_data.t_label
-N = len(dev_X)
 
 optimizer = opt.Adam(huapa.parameters(), lr=learning_rate)
 data_size = train_X.shape[0]
 iters = data_size//batch_size
 
+batch_iters = 0
 
 for epoch in range(100):
     for i in range(iters):
@@ -70,16 +71,7 @@ for epoch in range(100):
         loss.backward()
         optimizer.step()
 
-    if epoch % 10 == 0:
-        predict = huapa.forward(dev_X)
-        y = [x.index(max(x)) for x in predict]
-        c = 0
-        s = 0
-        for i in range(N):
-            if dev_Y[i] == y[i]:
-                c += 1
-            s += (dev_Y[i] - y[i])**2
-        acc = c/N
-        RMSE = np.sqrt(s/N)
+        batch_iters += 1
+
+    if batch_iters % 100 == 0:
         torch.save(huapa.state_dict(), '../checkpoint/yelp-2013-'+str(epoch)+'-parameter.pkl')
-        print('epoch ', epoch, '--------- acc =', acc, '   RMSE =', RMSE)

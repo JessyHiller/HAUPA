@@ -74,16 +74,16 @@ class Data(object):
     def usr_prd_dict(self):
         usr_dict = dict()
         prd_dict = dict()
+        i = 0
         for u in self.t_usr:
-            i = 0
             if usr_dict.get(u) is None:
                 usr_dict[u] = i
                 i += 1
+        j = 0
         for p in self.t_prd:
-            i = 0
             if prd_dict.get(p) is None:
-                prd_dict[p] = i
-                i += 1
+                prd_dict[p] = j
+                j += 1
         return usr_dict, prd_dict
 
     def usr_prd(self, u_dict, p_dict):

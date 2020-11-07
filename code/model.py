@@ -36,12 +36,12 @@ class HUAPA(torch.nn.Module):
 
         self.v_wp = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
         self.W_wph = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
-        self.W_wpu = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
+        self.W_wpp = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
         self.b_wp = torch.empty((2 * self.hidden_size)).uniform_(-0.01, 0.01)
 
         self.v_sp = torch.empty((2 * self.hidden_size, 1)).uniform_(-0.01, 0.01)
         self.W_sph = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
-        self.W_spu = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
+        self.W_spp = torch.empty((2 * self.hidden_size, 2 * self.hidden_size)).uniform_(-0.01, 0.01)
         self.b_sp = torch.empty((2 * self.hidden_size)).uniform_(-0.01, 0.01)
 
         self.predict = torch.nn.Linear(4*self.hidden_size, self.num_class)
@@ -135,7 +135,7 @@ class HUAPA(torch.nn.Module):
         :return: s_u: (no_review, max_doc_len, 2*hidden_size)
         """
         h_projection = torch.matmul(s_hidden_state, self.W_wuh)
-        u_projection = torch.matmul(u, self.W_wuh)
+        u_projection = torch.matmul(u, self.W_wuu)
         add_projection = h_projection + u_projection[:, None, None, :]
         linear = torch.add(add_projection, self.b_wu)
         t = torch.tanh(linear)
@@ -152,7 +152,7 @@ class HUAPA(torch.nn.Module):
         :return: d_u: (batch_size, 2*hidden_size)
         """
         h_projection = torch.matmul(d_hidden_state, self.W_suh)
-        u_projection = torch.matmul(u, self.W_suh)
+        u_projection = torch.matmul(u, self.W_suu)
         add_projection = h_projection + u_projection[:, None, :]
         linear = torch.add(add_projection, self.b_su)
         t = torch.tanh(linear)
@@ -163,7 +163,7 @@ class HUAPA(torch.nn.Module):
 
     def pa_w(self, s_hidden_state, p):
         h_projection = torch.matmul(s_hidden_state, self.W_wph)
-        p_projection = torch.matmul(p, self.W_wpu)
+        p_projection = torch.matmul(p, self.W_wpp)
         add_projection = h_projection + p_projection[:, None, None, :]
         linear = torch.add(add_projection, self.b_wp)
         t = torch.tanh(linear)
@@ -174,7 +174,7 @@ class HUAPA(torch.nn.Module):
 
     def pa_s(self, d_hidden_state, p):
         h_projection = torch.matmul(d_hidden_state, self.W_sph)
-        p_projection = torch.matmul(p, self.W_spu)
+        p_projection = torch.matmul(p, self.W_spp)
         add_projection = h_projection + p_projection[:, None, :]
         linear = torch.add(add_projection, self.b_sp)
         t = torch.tanh(linear)
