@@ -48,7 +48,7 @@ batch_iters = 0
 print('iters', iters)
 
 for epoch in range(100):
-    for i in range(iters):
+    for i in range(256, iters):
         X = dict()
         X['doc'] = torch.LongTensor(train_X[i*batch_size:(i+1)*batch_size])
         X['usr'] = torch.LongTensor(u[i*batch_size:(i+1)*batch_size])
