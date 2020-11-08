@@ -36,11 +36,8 @@ embedding_file, words_dict = load_word_embedding(path['yelp13-w2vec'], all_doc)
 
 u_dict, p_dict = train_data.usr_prd_dict()
 
-print(u_dict)
-print(p_dict)
-
 huapa = HUAPA(embedding_file, hidden_size, max_doc_len, max_sen_len, batch_size, len(u_dict), len(p_dict), 5)
-train_X = transform(words_dict, train_data.t_docs, max_doc_len, max_sen_len)
+train_X, sen_len, doc_len = transform(words_dict, train_data.t_docs, max_doc_len, max_sen_len)
 u, p = train_data.usr_prd(u_dict, p_dict)
 
 optimizer = opt.Adam(huapa.parameters(), lr=learning_rate)
@@ -48,6 +45,7 @@ data_size = train_X.shape[0]
 iters = data_size//batch_size
 
 batch_iters = 0
+print('iters', iters)
 
 for epoch in range(100):
     for i in range(iters):
@@ -55,14 +53,16 @@ for epoch in range(100):
         X['doc'] = torch.LongTensor(train_X[i*batch_size:(i+1)*batch_size])
         X['usr'] = torch.LongTensor(u[i*batch_size:(i+1)*batch_size])
         X['prd'] = torch.LongTensor(p[i*batch_size:(i+1)*batch_size])
-        predict_u, predict_p, predict = huapa.forward(X)
+        s_l = torch.tensor(sen_len[i*batch_size:(i+1)*batch_size])
+        d_l = torch.tensor(doc_len[i*batch_size:(i+1)*batch_size])
+        predict_u, predict_p, predict = huapa.forward(X, s_l, d_l)
 
         l = train_data.t_label[i*batch_size:(i+1)*batch_size]
         l_train = torch.tensor(np.eye(5)[l])
 
-        loss1 = torch.sum(torch.mul(predict, l_train))
-        loss2 = torch.sum(torch.mul(predict_u, l_train))
-        loss3 = torch.sum(torch.mul(predict_p, l_train))
+        loss1 = -torch.sum(torch.mul(torch.log(predict), l_train))
+        loss2 = -torch.sum(torch.mul(torch.log(predict_u), l_train))
+        loss3 = -torch.sum(torch.mul(torch.log(predict_p), l_train))
         loss = 0.4*loss1+0.3*loss2+0.3*loss3
 
         torch.autograd.set_detect_anomaly(True)
@@ -71,7 +71,8 @@ for epoch in range(100):
         loss.backward()
         optimizer.step()
 
+        print('iter', i)
         batch_iters += 1
 
-    if batch_iters % 100 == 0:
-        torch.save(huapa.state_dict(), '../checkpoint/yelp-2013-'+str(epoch)+'-parameter.pkl')
+        if batch_iters % 50 == 0:
+            torch.save(huapa.state_dict(), '../checkpoint/yelp-2013-'+str(batch_iters)+'-parameter.pkl')

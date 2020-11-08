@@ -28,7 +28,7 @@ def load_word_embedding(path, corpus):
     return np.array(word_embeddings), word_dict
 
 
-def transform(word_dict, reviews, max_sen_len, max_doc_len):
+def transform(word_dict, reviews, max_doc_len, max_sen_len):
     """
     :param word_dict: map word to index
     :param reviews: list of string
@@ -37,7 +37,9 @@ def transform(word_dict, reviews, max_sen_len, max_doc_len):
     :return: X(no_reviews, max_doc_len, max_sen_len)
     """
     X = []
-    for doc in reviews:
+    sen_len = np.zeros((len(reviews), max_doc_len), dtype=int)
+    doc_len = []
+    for no, doc in enumerate(reviews):
         i = 0
         x = np.zeros((max_doc_len, max_sen_len), dtype=int)
         for sen in doc.split('<sssss>'):
@@ -51,9 +53,14 @@ def transform(word_dict, reviews, max_sen_len, max_doc_len):
                     continue
                 x[i][j] = word_dict[w]
                 j += 1
-        i += 1
+            sen_len[no][i] = j
+            i += 1
+        doc_len.append(len(sen_len[no].nonzero()[0]))
         X.append(x)
-    return np.array(X)
+
+    assert sum(doc_len) == len(sen_len.nonzero()[0]), 'expected to be equal: {}, {}'.format(sum(doc_len), len(sen_len.nonzero()))
+    assert len(doc_len) == len(reviews)
+    return np.array(X), sen_len, np.array(doc_len)
 
 
 class Data(object):
