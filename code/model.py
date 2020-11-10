@@ -62,6 +62,7 @@ class HUAPA(torch.nn.Module):
         x_train = x_tr.float()
 
         sorted_doc_len, doc_indices = torch.sort(doc_len, descending=True)
+        _, desorted__doc_indices = torch.sort(doc_indices, descending=False)
         x = x_train[doc_indices]
         u = u_train[doc_indices]
         p = p_train[doc_indices]
@@ -100,10 +101,10 @@ class HUAPA(torch.nn.Module):
         dh_p = self.s2d_p(sp_p, sorted_doc_len)
         dp_p = self.pa_s(dh_p, p, mask1)
 
-        pre_u = torch.nn.functional.softmax(self.predict_u(dp_u), -1)
-        pre_p = torch.nn.functional.softmax(self.predict_u(dp_p), -1)
+        pre_u = torch.nn.functional.softmax(self.predict_u(dp_u), -1)[desorted__doc_indices]
+        pre_p = torch.nn.functional.softmax(self.predict_u(dp_p), -1)[desorted__doc_indices]
         dp = torch.cat((dp_u, dp_p), -1)
-        pre = torch.nn.functional.softmax(self.predict(dp), -1)
+        pre = torch.nn.functional.softmax(self.predict(dp), -1)[desorted__doc_indices]
 
         return pre_u, pre_p, pre
 
