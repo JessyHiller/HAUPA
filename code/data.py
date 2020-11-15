@@ -39,6 +39,7 @@ def transform(word_dict, reviews, max_doc_len, max_sen_len):
     X = []
     sen_len = np.zeros((len(reviews), max_doc_len), dtype=int)
     doc_len = []
+    outlier = []
     for no, doc in enumerate(reviews):
         i = 0
         x = np.zeros((max_doc_len, max_sen_len), dtype=int)
@@ -46,21 +47,25 @@ def transform(word_dict, reviews, max_doc_len, max_sen_len):
             if i == max_doc_len:
                 break
             j = 0
-            for w in sen.strip().split(' '):
+            for w in sen.strip().split():
                 if j == max_sen_len:
                     break
                 if w not in word_dict:
                     continue
                 x[i][j] = word_dict[w]
                 j += 1
+            if j == 0:
+                continue
             sen_len[no][i] = j
             i += 1
+        if i == 0:
+            outlier.append(no)
         doc_len.append(len(sen_len[no].nonzero()[0]))
         X.append(x)
 
     assert sum(doc_len) == len(sen_len.nonzero()[0]), 'expected to be equal: {}, {}'.format(sum(doc_len), len(sen_len.nonzero()))
     assert len(doc_len) == len(reviews)
-    return np.array(X), sen_len, np.array(doc_len)
+    return np.array(X), sen_len, np.array(doc_len), outlier
 
 
 class Data(object):
@@ -99,4 +104,4 @@ class Data(object):
         for i in range(self.data_size):
             usr.append(u_dict[self.t_usr[i]])
             prd.append(p_dict[self.t_prd[i]])
-        return usr, prd
+        return np.array(usr), np.array(prd)

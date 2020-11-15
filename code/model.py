@@ -15,14 +15,15 @@ class HUAPA(torch.nn.Module):
         self.no_review = batch_size
 
         self.embedding = torch.nn.Embedding.from_pretrained(torch.tensor(embedding_file))
-        self.usr_embedding = torch.nn.Embedding(u_num, 2*self.hidden_size)
-        self.prd_embedding = torch.nn.Embedding(p_num, 2*self.hidden_size)
+        x = torch.rand(u_num, self.embedding_dim)*0.02-0.01
+        self.usr_embedding = torch.nn.Embedding.from_pretrained(x, freeze=False)
+        y = torch.rand(p_num, self.embedding_dim)*0.02-0.01
+        self.prd_embedding = torch.nn.Embedding.from_pretrained(y, freeze=False)
 
         self.w2s_u_lstm = torch.nn.LSTM(input_size=self.embedding_dim, hidden_size=hidden_size,
                                         bidirectional=True, batch_first=True)
         self.s2d_u_lstm = torch.nn.LSTM(input_size=self.hidden_size*2, hidden_size=hidden_size,
                                         bidirectional=True, batch_first=True)
-
         self.w2s_p_lstm = torch.nn.LSTM(input_size=self.embedding_dim, hidden_size=hidden_size,
                                         bidirectional=True, batch_first=True)
         self.s2d_p_lstm = torch.nn.LSTM(input_size=self.hidden_size*2, hidden_size=hidden_size,
@@ -58,6 +59,7 @@ class HUAPA(torch.nn.Module):
         :return:
         """
         # assert len(usr) == len(prd) and len(usr) == len(prd) and len(usr) == np.shape(X)[0], "wrong data!"
+        self.no_review = len(doc_len)
         x_tr, u_train, p_train = self.look_up(X['doc'], X['usr'], X['prd'])
         x_train = x_tr.float()
 
@@ -72,17 +74,17 @@ class HUAPA(torch.nn.Module):
 
         x_w2s_packed = torch.nn.utils.rnn.pack_padded_sequence(x, sorted_doc_len, batch_first=True)
 
-        x_w2s = x_w2s_packed   # (sum(doc_len), max_sen_len, 200)
-
-        sh_u_packed = self.w2s_u(x_w2s, s_l)
+        sh_u_packed = self.w2s_u(x_w2s_packed, s_l)
         sh_u_padded, _ = torch.nn.utils.rnn.pad_packed_sequence(sh_u_packed, batch_first=True)
         mask0 = torch.zeros(sh_u_padded.shape[:3])
 
+        sen_l_m = sen_len[doc_indices].reshape(self.no_review * self.max_doc_len)
+        s_l_m = sen_l_m[torch.nonzero(sen_l_m, as_tuple=True)]
         for i in range(self.no_review):
             l = sorted_doc_len[i]
             for j in range(sh_u_padded.shape[1]):
                 if j < l:
-                    mask0[i, j, s_l[sum(sorted_doc_len[:i])+j]:] = 1
+                    mask0[i, j, s_l_m[sum(sorted_doc_len[:i])+j]:] = 1
                 else:
                     mask0[i, j, :] = 1
 
@@ -95,14 +97,14 @@ class HUAPA(torch.nn.Module):
 
         dp_u = self.ua_s(dh_u, u, mask1)
 
-        sh_p_packed = self.w2s_p(x_w2s, s_l)
+        sh_p_packed = self.w2s_p(x_w2s_packed, s_l)
         sh_p_padded, _ = torch.nn.utils.rnn.pad_packed_sequence(sh_p_packed, batch_first=True)
         sp_p = self.pa_w(sh_p_padded, p, mask0)
         dh_p = self.s2d_p(sp_p, sorted_doc_len)
         dp_p = self.pa_s(dh_p, p, mask1)
 
         pre_u = torch.nn.functional.softmax(self.predict_u(dp_u), -1)[desorted__doc_indices]
-        pre_p = torch.nn.functional.softmax(self.predict_u(dp_p), -1)[desorted__doc_indices]
+        pre_p = torch.nn.functional.softmax(self.predict_p(dp_p), -1)[desorted__doc_indices]
         dp = torch.cat((dp_u, dp_p), -1)
         pre = torch.nn.functional.softmax(self.predict(dp), -1)[desorted__doc_indices]
 
@@ -140,7 +142,7 @@ class HUAPA(torch.nn.Module):
         """
 
         :param X: (batch_size=no_review, -1, 2*hidden_size)
-        :param doc_len (no_review) : length of reviews
+        :param doc_len  :(no_review) length of reviews
         :return:(batch_size, -1, 2*hidden_size)
         """
         packed_input = nn.utils.rnn.pack_padded_sequence(input=X, lengths=doc_len, batch_first=True)
@@ -178,7 +180,7 @@ class HUAPA(torch.nn.Module):
         t = torch.tanh(add_projection)
         mask = m.unsqueeze(-1)
         e = self.v_wu(t)
-        e_ = e.masked_fill(mask == 1, 1e-9)
+        e_ = e.masked_fill(mask.bool(), -1e9)
         alpha = torch.nn.functional.softmax(e_, dim=-2)
         s_u = torch.matmul(s_hidden_state.transpose(-1, -2), alpha).squeeze()
         return s_u
@@ -196,7 +198,7 @@ class HUAPA(torch.nn.Module):
         t = torch.tanh(add_projection)
         mask = m.unsqueeze(-1)
         e = self.v_su(t)
-        e_ = e.masked_fill(mask == 1, 1e-9)
+        e_ = e.masked_fill(mask.bool(), -1e9)
         beta = torch.nn.functional.softmax(e_, dim=-2)
         d_u = torch.matmul(d_hidden_state.transpose(-1, -2), beta).squeeze()
         return d_u
@@ -208,7 +210,7 @@ class HUAPA(torch.nn.Module):
         t = torch.tanh(add_projection)
         mask = m.unsqueeze_(-1)
         e = self.v_wp(t)
-        e_ = e.masked_fill(mask == 1, 1e-9)
+        e_ = e.masked_fill(mask.bool(), -1e9)
         alpha = torch.nn.functional.softmax(e_, dim=-2)
         s_p = torch.matmul(s_hidden_state.transpose(-1, -2), alpha).squeeze()
         return s_p
@@ -220,7 +222,7 @@ class HUAPA(torch.nn.Module):
         t = torch.tanh(add_projection)
         mask = m.unsqueeze(-1)
         e = self.v_sp(t)
-        e_ = e.masked_fill(mask == 1, 1e-9)
+        e_ = e.masked_fill(mask.bool(), -1e9)
         beta = torch.nn.functional.softmax(e_, dim=-2)
         d_p = torch.matmul(d_hidden_state.transpose(-1, -2), beta).squeeze()
         return d_p
